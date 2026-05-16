@@ -1,0 +1,57 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 64 64"
+  width="64"
+  height="64"
+>
+  <defs>
+    <linearGradient id="bg-active" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2ea84f" />
+      <stop offset="100%" stop-color="#1a7a35" />
+    </linearGradient>
+    <filter id="glow-active" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow
+        dx="0"
+        dy="0"
+        stdDeviation="2.5"
+        flood-color="#4ade80"
+        flood-opacity="0.55"
+      />
+    </filter>
+  </defs>
+
+  <!-- Background rounded square -->
+  <rect
+    x="2"
+    y="2"
+    width="60"
+    height="60"
+    rx="14"
+    ry="14"
+    fill="url(#bg-active)"
+    stroke="#3cb860"
+    stroke-width="1.5"
+  />
+
+  <!-- Power icon: arc (radius 14, centered at 32,33) -->
+  <path
+    d="M18 33 A 14 14 0 1 1 46 33"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="3.5"
+    stroke-linecap="round"
+    filter="url(#glow-active)"
+  />
+
+  <!-- Power icon: vertical bar (starts below arc top, ends below arc bottom) -->
+  <line
+    x1="32"
+    y1="30"
+    x2="32"
+    y2="40"
+    stroke="#ffffff"
+    stroke-width="3.5"
+    stroke-linecap="round"
+    filter="url(#glow-active)"
+  />
+</svg>
