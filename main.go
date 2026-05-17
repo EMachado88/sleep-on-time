@@ -136,15 +136,17 @@ func onReady() {
 		for {
 			select {
 			case <-mTimerSet.ClickedCh:
-				setTimerDialog()
-				// Auto-activate after setting
-				activateTimer()
+				if setTimerDialog() {
+					// Auto-activate after setting
+					activateTimer()
+				}
 			case <-mTimerActivate.ClickedCh:
 				activateTimer()
 			case <-mFixedSet.ClickedCh:
-				setFixedDialog()
-				// Auto-activate after setting
-				activateFixed()
+				if setFixedDialog() {
+					// Auto-activate after setting
+					activateFixed()
+				}
 			case <-mTimeActivate.ClickedCh:
 				activateFixed()
 			case <-mCancel.ClickedCh:
@@ -483,20 +485,20 @@ func detectDarkModeWindows() bool {
 }
 
 // setTimerDialog opens a dialog to set timer duration (minutes only)
-func setTimerDialog() {
+func setTimerDialog() bool {
 	min, ok, err := dlgs.Entry("Timer Minutes", "Enter minutes:", fmt.Sprintf("%d", config.TimerMinutes))
 	if err != nil {
 		log.Printf("Dialog error: %v", err)
-		return
+		return false
 	}
 	if !ok {
-		return // user cancelled
+		return false // user cancelled
 	}
 	var minutes int
 	fmt.Sscanf(min, "%d", &minutes)
 	if minutes <= 0 || minutes > 999 {
 		dlgs.Error("Invalid duration", "Please set at least 1 minute.")
-		return
+		return false
 	}
 
 	config.TimerMinutes = minutes
@@ -511,6 +513,7 @@ func setTimerDialog() {
 	if mTimerSet != nil {
 		mTimerSet.SetTitle(fmt.Sprintf("Set (current: %s)", formatRemainingTime(time.Duration(config.TimerMinutes)*time.Minute)))
 	}
+	return true
 }
 
 // activateTimer starts the countdown based on timer duration (minutes only)
@@ -523,37 +526,37 @@ func activateTimer() {
 }
 
 // setFixedDialog opens a dialog to set fixed time (hour + minute)
-func setFixedDialog() {
+func setFixedDialog() bool {
 	// Get hour
 	hour, ok, err := dlgs.Entry("Fixed Time Hour", "Enter hour (0-23):", fmt.Sprintf("%d", config.FixedTime.Hour()))
 	if err != nil {
 		log.Printf("Dialog error: %v", err)
-		return
+		return false
 	}
 	if !ok {
-		return
+		return false
 	}
 	var h int
 	fmt.Sscanf(hour, "%d", &h)
 	if h < 0 || h > 23 {
 		dlgs.Error("Invalid hour", "Hour must be between 0 and 23.")
-		return
+		return false
 	}
 
 	// Get minute
 	min, ok, err := dlgs.Entry("Fixed Time Minute", "Enter minute (0-59):", fmt.Sprintf("%d", config.FixedTime.Minute()))
 	if err != nil {
 		log.Printf("Dialog error: %v", err)
-		return
+		return false
 	}
 	if !ok {
-		return
+		return false
 	}
 	var m int
 	fmt.Sscanf(min, "%d", &m)
 	if m < 0 || m > 59 {
 		dlgs.Error("Invalid minute", "Minute must be between 0 and 59.")
-		return
+		return false
 	}
 
 	// Create time for today
@@ -575,6 +578,7 @@ func setFixedDialog() {
 	if mFixedSet != nil {
 		mFixedSet.SetTitle(fmt.Sprintf("Set (current: %s)", config.FixedTime.Format("15:04")))
 	}
+	return true
 }
 
 // activateFixed starts the countdown to the fixed time
