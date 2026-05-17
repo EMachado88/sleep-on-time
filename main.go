@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"embed"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -38,12 +39,20 @@ var (
 	activeUntil  time.Time
 	activeType   string // "timer" or "time"
 
-	// Icons
+)
+
+//go:embed assets/*.svg
+var iconFiles embed.FS
+
+// Icons
+var (
 	iconLight  []byte
 	iconDark   []byte
 	iconActive []byte
+)
 
-	// Theme detection
+// Theme detection
+var (
 	isDarkMode bool
 )
 
@@ -56,16 +65,16 @@ func main() {
 	configPath = filepath.Join(configDir, "sleep-on-time", "config.json")
 	loadConfig()
 
-	// Load icons
-	iconLight, err = loadIcon("assets/icon-light.svg")
+	// Load icons from embedded files
+	iconLight, err = loadIconFromFS(iconFiles, "assets/icon-light.svg")
 	if err != nil {
 		log.Fatal(err)
 	}
-	iconDark, err = loadIcon("assets/icon-dark.svg")
+	iconDark, err = loadIconFromFS(iconFiles, "assets/icon-dark.svg")
 	if err != nil {
 		log.Fatal(err)
 	}
-	iconActive, err = loadIcon("assets/icon-active.svg")
+	iconActive, err = loadIconFromFS(iconFiles, "assets/icon-active.svg")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -190,6 +199,39 @@ func onExit() {
 func loadIcon(svgPath string) ([]byte, error) {
 	// Read SVG file
 	svgData, err := os.ReadFile(svgPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse SVG
+	icon, err := oksvg.ReadIconStream(bytes.NewReader(svgData))
+	if err != nil {
+		return nil, err
+	}
+
+	// Set viewport to SVG's viewBox
+	w, h := int(icon.ViewBox.W), int(icon.ViewBox.H)
+	if w <= 0 || h <= 0 {
+		w, h = 64, 64
+	}
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	icon.SetTarget(0, 0, float64(w), float64(h))
+	raster := rasterx.NewDasher(w, h, rasterx.NewScannerGV(w, h, img, img.Bounds()))
+	icon.Draw(raster, 1.0)
+
+	// Encode to PNG
+	var buf bytes.Buffer
+	err = png.Encode(&buf, img)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// loadIconFromFS loads an icon from the embedded filesystem
+func loadIconFromFS(fs embed.FS, svgPath string) ([]byte, error) {
+	// Read SVG file from embedded FS
+	svgData, err := fs.ReadFile(svgPath)
 	if err != nil {
 		return nil, err
 	}
