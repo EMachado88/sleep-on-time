@@ -34,6 +34,7 @@ var (
 
 	// Active countdown
 	activeCancel context.CancelFunc
+	activeDone   chan struct{}
 	activeUntil  time.Time
 	activeType   string // "timer" or "time"
 
@@ -113,7 +114,7 @@ func onReady() {
 
 	systray.AddSeparator()
 
-	mRemaining = systray.AddMenuItem("Remaining: --", "Remaining time until sleep")
+	mRemaining = systray.AddMenuItem("-", "Remaining time until sleep")
 	mRemaining.Disable() // always disabled, just informational
 
 	mCancel = systray.AddMenuItem("Cancel", "Cancel active countdown")
@@ -556,13 +557,17 @@ func activateFixed() {
 
 // startCountdown begins a countdown to deadline
 func startCountdown(deadline time.Time, countdownType string) {
-	// Cancel any existing countdown
+	// Cancel any existing countdown and wait for it to finish
 	if activeCancel != nil {
 		activeCancel()
+		if activeDone != nil {
+			<-activeDone // wait for old goroutine to exit
+		}
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	activeCancel = cancel
+	activeDone = make(chan struct{})
 	activeUntil = deadline
 	activeType = countdownType
 
@@ -575,6 +580,7 @@ func startCountdown(deadline time.Time, countdownType string) {
 	}
 
 	go func() {
+		defer close(activeDone) // signal that we're done
 		var timedOut bool
 		select {
 		case <-ctx.Done():
