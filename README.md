@@ -13,8 +13,12 @@ A simple system tray application that puts your computer to sleep after a timer 
 - **Remaining time display** in system tray menu (disabled entry showing countdown)
   - Shows only non-zero components (e.g., 1h30m45s, 45m, 20s)
   - Same format used in tooltip and menu entry
-- Set a timer (hours + minutes) to sleep
-- Set a fixed time to sleep
+- **Timer mode**: Set minutes only, auto-activates after setting
+  - Shows currently set duration in menu
+- **Fixed mode**: Set time via hour + minute entry
+  - Schedules for next occurrence of that time (today or tomorrow)
+  - Auto-activates after setting
+  - Shows currently set time in menu (e.g., "Set... (current: 14:30)")
 - Countdown shown in tooltip
 - Persists last settings
 - Cross-platform (Linux, macOS, Windows)
@@ -44,10 +48,16 @@ go build -o sleep-on-time .
 
 Run the executable. The app will appear in your system tray.
 
-- **Timer > Set...**: Set timer duration (hours and minutes)
+- **Timer > Set...**: Set timer duration (minutes only, 1-999)
+  - Auto-activates after setting
+  - Shows current duration in menu
 - **Timer > Activate**: Start the timer with last set duration
-- **Time > Set...**: Set fixed time (hour and minute)
-- **Time > Activate**: Start countdown to fixed time
+- **Fixed > Set...**: Set fixed time (hour 0-23, minute 0-59)
+  - Schedules for next occurrence (today or tomorrow)
+  - Auto-activates after setting
+  - Shows current time in menu (e.g., "Set... (current: 14:30)")
+- **Fixed > Activate**: Start countdown to fixed time
+- **Remaining: --**: Disabled entry showing countdown (when active)
 - **Cancel**: Cancel active countdown
 - **Exit**: Quit the application
 
