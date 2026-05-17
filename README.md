@@ -10,6 +10,9 @@ A simple system tray application that puts your computer to sleep after a timer 
   - **macOS**: Detects via `defaults read -g AppleInterfaceStyle`
   - **Windows**: Queries registry `AppsUseLightTheme` value
   - Checks every second for theme changes
+- **Remaining time display** in system tray menu (disabled entry showing countdown)
+  - Shows only non-zero components (e.g., 1h30m45s, 45m, 20s)
+  - Same format used in tooltip and menu entry
 - Set a timer (hours + minutes) to sleep
 - Set a fixed time to sleep
 - Countdown shown in tooltip

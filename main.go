@@ -77,6 +77,7 @@ func main() {
 var (
 	mTimerActivate *systray.MenuItem
 	mTimeActivate  *systray.MenuItem
+	mRemaining     *systray.MenuItem
 	mCancel        *systray.MenuItem
 )
 
@@ -106,6 +107,9 @@ func onReady() {
 
 	systray.AddSeparator()
 
+	mRemaining = systray.AddMenuItem("Remaining: --", "Remaining time until sleep")
+	mRemaining.Disable() // always disabled, just informational
+
 	mCancel = systray.AddMenuItem("Cancel", "Cancel active countdown")
 	mCancel.Disable() // disabled until a countdown is active
 
@@ -134,10 +138,19 @@ func onReady() {
 
 	// Tooltip updater
 	go func() {
-		ticker := time.NewTicker(30 * time.Second)
+		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
 			updateTooltip()
+		}
+	}()
+
+	// Remaining time updater - update every second
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			updateRemainingMenu()
 		}
 	}()
 
@@ -195,17 +208,54 @@ func loadIcon(svgPath string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// formatRemainingTime formats a duration into a string with only non-zero components.
+// Example: 1h30m45s, 45m20s, 20s, etc.
+func formatRemainingTime(d time.Duration) string {
+	hours := int(d.Hours())
+	minutes := int(d.Minutes()) % 60
+	seconds := int(d.Seconds()) % 60
+
+	var parts []string
+	if hours > 0 {
+		parts = append(parts, fmt.Sprintf("%dh", hours))
+	}
+	if minutes > 0 {
+		parts = append(parts, fmt.Sprintf("%dm", minutes))
+	}
+	if seconds > 0 {
+		parts = append(parts, fmt.Sprintf("%ds", seconds))
+	}
+
+	if len(parts) == 0 {
+		return "0s"
+	}
+
+	return strings.Join(parts, "")
+}
+
 // updateTooltip updates the systray tooltip with remaining time if active
 // Icon updates are handled separately by updateIcon() via the theme watcher
 func updateTooltip() {
 	if !activeUntil.IsZero() && time.Now().Before(activeUntil) {
 		remaining := time.Until(activeUntil)
-		hours := int(remaining.Hours())
-		minutes := int(remaining.Minutes()) % 60
-		tooltip := fmt.Sprintf("Sleep on Time (%dh%02d)", hours, minutes)
+		tooltip := fmt.Sprintf("Sleep on Time (%s)", formatRemainingTime(remaining))
 		systray.SetTooltip(tooltip)
 	} else {
 		systray.SetTooltip("Sleep on Time")
+	}
+}
+
+// updateRemainingMenu updates the disabled menu item with remaining time
+func updateRemainingMenu() {
+	if mRemaining == nil {
+		return
+	}
+	if !activeUntil.IsZero() && time.Now().Before(activeUntil) {
+		remaining := time.Until(activeUntil)
+		text := fmt.Sprintf("Remaining: %s", formatRemainingTime(remaining))
+		mRemaining.SetTitle(text)
+	} else {
+		mRemaining.SetTitle("")
 	}
 }
 
@@ -509,24 +559,28 @@ func startCountdown(deadline time.Time, countdownType string) {
 	}
 
 	go func() {
+		var timedOut bool
 		select {
 		case <-ctx.Done():
 			// cancelled
-			activeUntil = time.Time{}
-			updateIcon()
-			updateTooltip()
-			if mCancel != nil {
-				mCancel.Disable()
-			}
-			return
+			timedOut = false
 		case <-time.After(time.Until(deadline)):
 			// Time to sleep
-			activeUntil = time.Time{}
-			updateIcon()
-			updateTooltip()
-			if mCancel != nil {
-				mCancel.Disable()
-			}
+			timedOut = true
+		}
+
+		// Common cleanup
+		activeUntil = time.Time{}
+		updateIcon()
+		updateTooltip()
+		if mCancel != nil {
+			mCancel.Disable()
+		}
+		if mRemaining != nil {
+			mRemaining.SetTitle("")
+		}
+
+		if timedOut {
 			sleep()
 		}
 	}()
