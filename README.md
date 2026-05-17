@@ -5,6 +5,11 @@ A simple system tray application that puts your computer to sleep after a timer 
 ## Features
 
 - System tray icon with active/inactive states
+- **Automatic dark/light mode detection** (cross-platform)
+  - **Linux**: Uses freedesktop portal (`gdbus`), then GNOME/KDE fallbacks
+  - **macOS**: Detects via `defaults read -g AppleInterfaceStyle`
+  - **Windows**: Queries registry `AppsUseLightTheme` value
+  - Checks every second for theme changes
 - Set a timer (hours + minutes) to sleep
 - Set a fixed time to sleep
 - Countdown shown in tooltip

@@ -12,6 +12,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gen2brain/dlgs"
@@ -41,6 +43,9 @@ var (
 	iconLight  []byte
 	iconDark   []byte
 	iconActive []byte
+
+	// Theme detection
+	isDarkMode bool
 )
 
 func main() {
@@ -79,6 +84,10 @@ func onReady() {
 	systray.SetIcon(iconLight)
 	systray.SetTitle("Sleep on Time")
 	updateTooltip()
+
+	// Initial theme detection
+	isDarkMode = detectDarkMode()
+	updateIcon()
 
 	// Menu items
 	mTimer := systray.AddMenuItem("Timer", "Timer submenu")
@@ -131,6 +140,19 @@ func onReady() {
 			updateTooltip()
 		}
 	}()
+
+	// Theme watcher - check every second
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			newDarkMode := detectDarkMode()
+			if newDarkMode != isDarkMode {
+				isDarkMode = newDarkMode
+				updateIcon()
+			}
+		}
+	}()
 }
 
 func onExit() {
@@ -174,6 +196,7 @@ func loadIcon(svgPath string) ([]byte, error) {
 }
 
 // updateTooltip updates the systray tooltip with remaining time if active
+// Icon updates are handled separately by updateIcon() via the theme watcher
 func updateTooltip() {
 	if !activeUntil.IsZero() && time.Now().Before(activeUntil) {
 		remaining := time.Until(activeUntil)
@@ -181,11 +204,179 @@ func updateTooltip() {
 		minutes := int(remaining.Minutes()) % 60
 		tooltip := fmt.Sprintf("Sleep on Time (%dh%02d)", hours, minutes)
 		systray.SetTooltip(tooltip)
-		systray.SetIcon(iconActive)
 	} else {
 		systray.SetTooltip("Sleep on Time")
+	}
+}
+
+// updateIcon sets the appropriate icon based on active state and theme
+func updateIcon() {
+	if !activeUntil.IsZero() && time.Now().Before(activeUntil) {
+		systray.SetIcon(iconActive)
+	} else if isDarkMode {
+		systray.SetIcon(iconDark)
+	} else {
 		systray.SetIcon(iconLight)
 	}
+}
+
+// detectDarkMode attempts to detect if the system is using dark mode.
+// Returns true if dark mode is detected, false otherwise.
+func detectDarkMode() bool {
+	switch runtime.GOOS {
+	case "linux":
+		// Try freedesktop portal first (gdbus)
+		if dark, ok := detectDarkModePortal(); ok {
+			return dark
+		}
+		// Fall back to DE-specific methods
+		return detectDarkModeLinuxDE()
+	case "darwin":
+		return detectDarkModeDarwin()
+	case "windows":
+		return detectDarkModeWindows()
+	default:
+		return false
+	}
+}
+
+// detectDarkModePortal uses freedesktop portal to detect color-scheme
+// Returns (isDark, true) if successful, (false, false) if failed
+func detectDarkModePortal() (bool, bool) {
+	// gdbus call --session --dest org.freedesktop.portal.Desktop \
+	//   --object-path /org/freedesktop/portal/desktop \
+	//   --method org.freedesktop.portal.Settings.Read \
+	//   org.freedesktop.appearance color-scheme
+	cmd := exec.Command("gdbus", "call",
+		"--session",
+		"--dest", "org.freedesktop.portal.Desktop",
+		"--object-path", "/org/freedesktop/portal/desktop",
+		"--method", "org.freedesktop.portal.Settings.Read",
+		"org.freedesktop.appearance", "color-scheme")
+	output, err := cmd.Output()
+	if err != nil {
+		return false, false
+	}
+
+	// Parse output: expects something like (<<uint32 1>>,)
+	// where 0 = no preference (assume light), 1 = dark, 2 = light
+	str := strings.TrimSpace(string(output))
+	// Find "uint32" in the string
+	idx := strings.Index(str, "uint32")
+	if idx == -1 {
+		return false, false
+	}
+
+	// Extract the number after "uint32"
+	sub := str[idx+6:] // skip "uint32"
+	sub = strings.TrimSpace(sub)
+
+	// Remove any leading non-digit characters (like '<' or '>')
+	for len(sub) > 0 && !strings.ContainsAny(string(sub[0]), "0123456789") {
+		sub = sub[1:]
+	}
+
+	// Get the number before comma, parenthesis, or angle bracket
+	end := strings.IndexAny(sub, ",)>")
+	if end != -1 {
+		sub = sub[:end]
+	}
+	sub = strings.TrimSpace(sub)
+
+	if val, err := strconv.Atoi(sub); err == nil {
+		// 1 = dark, 2 = light, 0 = no preference (assume light)
+		return val == 1, true
+	}
+
+	return false, false
+}
+
+// detectDarkModeLinuxDE detects dark mode using DE-specific methods
+func detectDarkModeLinuxDE() bool {
+	// Try GNOME gsettings for color-scheme (newer GNOME)
+	if output, err := exec.Command("gsettings", "get", "org.gnome.desktop.interface", "color-scheme").Output(); err == nil {
+		if strings.Contains(strings.ToLower(string(output)), "dark") {
+			return true
+		}
+	}
+
+	// gsettings for gtk-theme
+	if output, err := exec.Command("gsettings", "get", "org.gnome.desktop.interface", "gtk-theme").Output(); err == nil {
+		if strings.Contains(strings.ToLower(string(output)), "dark") {
+			return true
+		}
+	}
+
+	// Try KDE 6 (kreadconfig6)
+	if output, err := exec.Command("kreadconfig6", "--group", "KDE", "--key", "Theme").Output(); err == nil {
+		if strings.Contains(strings.ToLower(string(output)), "dark") {
+			return true
+		}
+	}
+
+	// Try KDE 5 (older)
+	if output, err := exec.Command("kreadconfig5", "--group", "KDE", "--key", "Theme").Output(); err == nil {
+		if strings.Contains(strings.ToLower(string(output)), "dark") {
+			return true
+		}
+	}
+
+	// Check environment variable
+	if theme := os.Getenv("GTK_THEME"); strings.Contains(strings.ToLower(theme), "dark") {
+		return true
+	}
+
+	return false
+}
+
+// detectDarkModeDarwin checks for dark mode on macOS.
+func detectDarkModeDarwin() bool {
+	// Use defaults command to read global AppleInterfaceStyle
+	// If the value is "Dark", then dark mode is active.
+	// If the key doesn't exist or is not "Dark", it's light mode.
+	cmd := exec.Command("defaults", "read", "-g", "AppleInterfaceStyle")
+	output, err := cmd.Output()
+	if err != nil {
+		// Key doesn't exist -> light mode
+		return false
+	}
+	// Output is usually "Dark\n" if dark mode is on
+	return strings.Contains(strings.ToLower(strings.TrimSpace(string(output))), "dark")
+}
+
+// detectDarkModeWindows checks for dark mode on Windows.
+// It queries the registry key AppsUseLightTheme under
+// HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize.
+// Value 0 means dark mode (light theme off), 1 means light mode.
+func detectDarkModeWindows() bool {
+	cmd := exec.Command("reg", "query",
+		"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+		"/v", "AppsUseLightTheme")
+	output, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	// Output format: something like
+	// HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize
+	//     AppsUseLightTheme    REG_DWORD    0x0
+	// We look for "0x0" which indicates dark mode (value 0).
+	// Actually, the value is a DWORD. If it's 0, dark mode; if 1, light mode.
+	// So we check if the line contains "0x0" (or "0x1" for light).
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "AppsUseLightTheme") {
+			// The value is after the last space maybe.
+			fields := strings.Fields(line)
+			if len(fields) >= 3 {
+				valStr := fields[len(fields)-1]
+				// valStr might be "0x0" or "0x1"
+				if valStr == "0x0" {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // setTimerDialog opens a dialog to set timer duration
@@ -322,7 +513,7 @@ func startCountdown(deadline time.Time, countdownType string) {
 		case <-ctx.Done():
 			// cancelled
 			activeUntil = time.Time{}
-			systray.SetIcon(iconLight)
+			updateIcon()
 			updateTooltip()
 			if mCancel != nil {
 				mCancel.Disable()
@@ -331,7 +522,7 @@ func startCountdown(deadline time.Time, countdownType string) {
 		case <-time.After(time.Until(deadline)):
 			// Time to sleep
 			activeUntil = time.Time{}
-			systray.SetIcon(iconLight)
+			updateIcon()
 			updateTooltip()
 			if mCancel != nil {
 				mCancel.Disable()
